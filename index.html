@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Juego de Emparejar: 10 términos y 10 definiciones</title>
+  <style>
+    /* === Estilos compactados === */
+    :root{
+      --bg:#0f172a; --panel:#111827; --muted:#334155; --card:#1f2937;
+      --text:#e5e7eb; --accent:#38bdf8; --good:#22c55e; --bad:#ef4444; --warn:#f59e0b;
+    }
+    body{margin:0;font-family:system-ui;background:radial-gradient(1200px 800px at 80% -20%, #0b1228 20%, var(--bg) 70%);color:var(--text);min-height:100vh;display:grid;place-items:center;padding:24px;}
+    .app{width:min(1100px,100%);}
+    header{display:flex;gap:16px;align-items:center;justify-content:space-between;margin-bottom:16px}
+    h1{font-size:clamp(20px,3.5vw,34px);margin:0;font-weight:700}
+    .controls{display:flex;gap:8px;flex-wrap:wrap}
+    button,.chip{border:none;border-radius:16px;padding:10px 14px;background:var(--card);color:var(--text);box-shadow:0 6px 18px rgba(0,0,0,.25);cursor:pointer}
+    .primary{background:linear-gradient(135deg,#0284c7,#06b6d4)}
+    .ghost{background:transparent;outline:1px solid #334155}
+    .stat{display:flex;gap:8px;align-items:center;background:#0b1220;border:1px solid #1e293b}
+    .board{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+    .column{background:rgba(255,255,255,.02);border:1px solid #1f2937;border-radius:20px;padding:16px}
+    .list{display:grid;gap:12px}
+    .card{background:var(--card);border:1px solid #273548;padding:12px 14px;border-radius:16px;box-shadow:0 8px 20px rgba(0,0,0,.25);}
+    .term{display:flex;align-items:center;justify-content:space-between;gap:10px}
+    .def{min-height:64px;display:grid;align-items:center}
+    .dropzone{border:1px dashed #334155;background:rgba(2,6,23,.35)}
+    .dropzone.correct{border-color:var(--good);background:rgba(34,197,94,.12)}
+    .dropzone.wrong{border-color:var(--bad);background:rgba(239,68,68,.12)}
+    .dropzone.locked{border-style:solid}
+    .pair-tag{font-size:.75rem;color:#a3e635;background:#052e1a;padding:2px 8px;border-radius:999px}
+    .footer{margin-top:16px;font-size:.9rem;color:#cbd5e1}
+    @media(max-width:860px){.board{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>Juego de emparejar — 10 términos y 10 definiciones</h1>
+      <div class="controls">
+        <span class="chip stat" id="progress">0/10 emparejados</span>
+        <button id="verificar" class="ghost">Verificar pendientes</button>
+        <button id="reiniciar" class="primary">Reiniciar</button>
+      </div>
+    </header>
+
+    <div class="board">
+      <section class="column">
+        <h2>Términos</h2>
+        <div id="terms" class="list"></div>
+      </section>
+      <section class="column">
+        <h2>Definiciones</h2>
+        <div id="defs" class="list"></div>
+      </section>
+    </div>
+
+    <p class="footer">Arrastra cada <b>término</b> sobre la <b>definición</b> correcta.</p>
+  </div>
+
+  <script>
+    // === PERSONALIZA TUS PARES AQUÍ ===
+    const PAIRS = [
+      { term: "Impresionismo", definition: "Movimiento pictórico enfocado en la luz y la percepción inmediata." },
+      { term: "Fresco", definition: "Técnica mural con pigmentos sobre yeso húmedo." },
+      { term: "Contraposto", definition: "Postura escultórica con el peso sobre una pierna." },
+      { term: "Tenebrismo", definition: "Contraste extremo de luces y sombras para dramatismo." },
+      { term: "Arquivolta", definition: "Conjunto de molduras concéntricas de un arco románico." },
+      { term: "Tríptico", definition: "Obra compuesta por tres paneles articulados." },
+      { term: "Sfumatto", definition: "Degradado suave de contornos, usado por Leonardo da Vinci." },
+      { term: "Bajorrelieve", definition: "Relieve poco sobresaliente respecto al fondo." },
+      { term: "Nave", definition: "Espacio longitudinal principal de un templo." },
+      { term: "Cromlech", definition: "Círculo megalítico de piedras verticales." },
+    ];
+
+    // === LÓGICA DEL JUEGO ===
+    const $terms=document.getElementById('terms');
+    const $defs=document.getElementById('defs');
+    const $progress=document.getElementById('progress');
+    const $reiniciar=document.getElementById('reiniciar');
+    const $verificar=document.getElementById('verificar');
+    let matched=0, draggedId=null;
+
+    function shuffle(a){return a.map(x=>x).sort(()=>Math.random()-0.5);}
+    function render(){
+      matched=0; $terms.innerHTML=''; $defs.innerHTML='';
+      const pairs=PAIRS.map((p,i)=>({id:i+1,...p}));
+      const left=shuffle(pairs), right=shuffle(pairs);
+      for(const p of left){
+        const card=document.createElement('div');
+        card.className='card term'; card.draggable=true; card.dataset.id=p.id;
+        card.innerHTML=`<span>${p.term}</span><span class="pair-tag">#${p.id}</span>`;
+        card.addEventListener('dragstart',e=>{draggedId=p.id;});
+        $terms.appendChild(card);
+      }
+      for(const p of right){
+        const zone=document.createElement('div');
+        zone.className='card def dropzone'; zone.dataset.id=p.id;
+        zone.textContent=p.definition;
+        zone.addEventListener('dragover',e=>e.preventDefault());
+        zone.addEventListener('drop',e=>tryPlace(zone,draggedId));
+        $defs.appendChild(zone);
+      }
+      updateProgress();
+    }
+    function tryPlace(zone,id){
+      if(zone.classList.contains('locked')) return;
+      if(Number(zone.dataset.id)===id){
+        zone.classList.add('correct','locked'); matched++;
+        document.querySelector(`.term[data-id="${id}"]`).style.opacity=.5;
+      }else{
+        zone.classList.add('wrong'); setTimeout(()=>zone.classList.remove('wrong'),500);
+      }
+      draggedId=null; updateProgress();
+    }
+    function updateProgress(){ $progress.textContent=`${matched}/${PAIRS.length} emparejados`; }
+    $reiniciar.onclick=render;
+    $verificar.onclick=()=>document.querySelectorAll('.dropzone:not(.locked)').forEach(z=>z.style.borderColor='orange');
+    render();
+  </script>
+</body>
+</html>
